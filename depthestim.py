@@ -59,24 +59,36 @@ for strOption, strArgument in getopt.getopt(sys.argv[1:], '', [ strParameter[2:]
 
 ##########################################################
 
+
+def get_file_names(dataset_folder):
+  raw_data_paths = []
+  for file in os.listdir(dataset_folder):
+      if file[-4:] in [".pgm", ".tif", ".png"]:
+        raw_data_paths.append(os.path.join(dataset_folder, file))
+  return raw_data_paths
+
+
 if __name__ == '__main__':
-  
-  npyImage = cv2.imread(filename=arguments_strIn, flags=cv2.IMREAD_COLOR)
-  
-  fltFocal = max(npyImage.shape[1], npyImage.shape[0]) / 2.0
-  fltBaseline = 40.0
-  
-  tenImage = torch.FloatTensor(numpy.ascontiguousarray(npyImage.transpose(2, 0, 1)[None, :, :, :].astype(numpy.float32) * (1.0 / 255.0))).cuda()
-  tenDisparity = disparity_estimation(tenImage)
-  tenDisparity = disparity_adjustment(tenImage, tenDisparity)
-  tenDisparity = disparity_refinement(torch.nn.functional.interpolate(input=tenImage, size=(tenDisparity.shape[2] * 4, tenDisparity.shape[3] * 4), mode='bilinear', align_corners=False), tenDisparity)
-  tenDisparity = torch.nn.functional.interpolate(input=tenDisparity, size=(tenImage.shape[2], tenImage.shape[3]), mode='bilinear', align_corners=False) * (max(tenImage.shape[2], tenImage.shape[3]) / 256.0)
-  tenDepth = (fltFocal * fltBaseline) / (tenDisparity + 0.0000001)
+  if "ShopFacade" in arguments_strIn:
+    images_paths = sorted(get_file_names(arguments_strIn),
+                          key=lambda x: int(x[-9:-4]))
+  for image_path in images_paths:
+    npyImage = cv2.imread(filename=image_path, flags=cv2.IMREAD_COLOR)
+    
+    fltFocal = max(npyImage.shape[1], npyImage.shape[0]) / 2.0
+    fltBaseline = 40.0
+    
+    tenImage = torch.FloatTensor(numpy.ascontiguousarray(npyImage.transpose(2, 0, 1)[None, :, :, :].astype(numpy.float32) * (1.0 / 255.0))).cuda()
+    tenDisparity = disparity_estimation(tenImage)
+    tenDisparity = disparity_adjustment(tenImage, tenDisparity)
+    tenDisparity = disparity_refinement(torch.nn.functional.interpolate(input=tenImage, size=(tenDisparity.shape[2] * 4, tenDisparity.shape[3] * 4), mode='bilinear', align_corners=False), tenDisparity)
+    tenDisparity = torch.nn.functional.interpolate(input=tenDisparity, size=(tenImage.shape[2], tenImage.shape[3]), mode='bilinear', align_corners=False) * (max(tenImage.shape[2], tenImage.shape[3]) / 256.0)
+    tenDepth = (fltFocal * fltBaseline) / (tenDisparity + 0.0000001)
 
-  npyDisparity = tenDisparity[0, 0, :, :].cpu().numpy()
-  npyDepth = tenDepth[0, 0, :, :].cpu().numpy()
+    npyDisparity = tenDisparity[0, 0, :, :].cpu().numpy()
+    npyDepth = tenDepth[0, 0, :, :].cpu().numpy()
 
-  cv2.imwrite(filename=arguments_strOut.replace('.npy', '.png'), img=(npyDisparity / fltBaseline * 255.0).clip(0.0, 255.0).astype(numpy.uint8))
+    # cv2.imwrite(filename=arguments_strOut.replace('.npy', '.png'), img=(npyDisparity / fltBaseline * 255.0).clip(0.0, 255.0).astype(numpy.uint8))
 
-  numpy.save(arguments_strOut, npyDepth)
+    numpy.save(image_path[:-3]+"npy", npyDepth)
 # end
